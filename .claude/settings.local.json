@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(git init:*)",
+      "Bash(gh auth:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: Shiri Sensor TCO Simulator\n\nReact + Vite + Tailwind CSS application for calculating\nTotal Cost of Ownership for Shiri Sensor systems.\n\nFeatures:\n- Internal management view with cost/price inputs\n- Customer-facing view with pricing summary\n- 1/3/5 year TCO calculations\n- Profit margin tracking\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh repo create:*)",
+      "Bash(npm install:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd features: validation, storage, export, and deploy\n\n- Add README.md with setup instructions\n- Add input validation with min/max limits\n- Add localStorage auto-save/load functionality\n- Add reset data button\n- Add PDF print export\n- Add Excel export using xlsx library\n- Add GitHub Actions workflow for GitHub Pages deployment\n- Configure vite base path for GitHub Pages\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(gh api:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh run:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

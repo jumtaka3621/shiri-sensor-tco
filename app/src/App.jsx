@@ -32,11 +32,9 @@ const defaultOwnCosts = {
   sensorHigh: 500000,
   ictPoe: 80000,
   ictLte: 120000,
+  // 保守（年額単価）
   maintCamera: 15000,
-  maintSensorNormal: 20000,
-  maintSensorHigh: 40000,
-  maintIctPoe: 10000,
-  maintIctLte: 15000,
+  maintOthers: 20000, // センサ類、ICT機器の保守をまとめる
   monitoring: 30000,
   lte: 3000,
   storage: 5000,
@@ -48,11 +46,9 @@ const defaultOwnPrices = {
   sensorHigh: 650000,
   ictPoe: 104000,
   ictLte: 156000,
+  // 保守（年額単価）
   maintCamera: 19500,
-  maintSensorNormal: 26000,
-  maintSensorHigh: 52000,
-  maintIctPoe: 13000,
-  maintIctLte: 19500,
+  maintOthers: 26000, // センサ類、ICT機器の保守をまとめる
   monitoring: 39000,
   lte: 3900,
   storage: 6500,
@@ -87,10 +83,10 @@ const App = () => {
   const [quantities, setQuantities] = useState(savedData?.quantities || defaultQuantities);
 
   // 自社収益項目（原価）
-  const [ownCosts, setOwnCosts] = useState(savedData?.ownCosts || defaultOwnCosts);
+  const [ownCosts, setOwnCosts] = useState(savedData ? { ...defaultOwnCosts, ...savedData.ownCosts } : defaultOwnCosts);
 
   // 自社収益項目（販売単価）
-  const [ownPrices, setOwnPrices] = useState(savedData?.ownPrices || defaultOwnPrices);
+  const [ownPrices, setOwnPrices] = useState(savedData ? { ...defaultOwnPrices, ...savedData.ownPrices } : defaultOwnPrices);
 
   // 外部スルー項目（原価=販売価格）
   const [externalCosts, setExternalCosts] = useState(savedData?.externalCosts || defaultExternalCosts);
@@ -128,12 +124,10 @@ const App = () => {
     const hwTotalSales = Object.values(hwCosts).reduce((sum, item) => sum + item.sales, 0);
 
     // 保守費用（年額）
+    const othersQty = q.sensorNormal + q.sensorHigh + q.ictPoe + q.ictLte;
     const maintCosts = {
       camera: { cost: ownCosts.maintCamera * q.camera, sales: ownPrices.maintCamera * q.camera, qty: q.camera, unitCost: ownCosts.maintCamera, unitPrice: ownPrices.maintCamera },
-      sensorNormal: { cost: ownCosts.maintSensorNormal * q.sensorNormal, sales: ownPrices.maintSensorNormal * q.sensorNormal, qty: q.sensorNormal, unitCost: ownCosts.maintSensorNormal, unitPrice: ownPrices.maintSensorNormal },
-      sensorHigh: { cost: ownCosts.maintSensorHigh * q.sensorHigh, sales: ownPrices.maintSensorHigh * q.sensorHigh, qty: q.sensorHigh, unitCost: ownCosts.maintSensorHigh, unitPrice: ownPrices.maintSensorHigh },
-      ictPoe: { cost: ownCosts.maintIctPoe * q.ictPoe, sales: ownPrices.maintIctPoe * q.ictPoe, qty: q.ictPoe, unitCost: ownCosts.maintIctPoe, unitPrice: ownPrices.maintIctPoe },
-      ictLte: { cost: ownCosts.maintIctLte * q.ictLte, sales: ownPrices.maintIctLte * q.ictLte, qty: q.ictLte, unitCost: ownCosts.maintIctLte, unitPrice: ownPrices.maintIctLte },
+      others: { cost: ownCosts.maintOthers * othersQty, sales: ownPrices.maintOthers * othersQty, qty: othersQty, unitCost: ownCosts.maintOthers, unitPrice: ownPrices.maintOthers },
     };
     const maintTotalCostYear = Object.values(maintCosts).reduce((sum, item) => sum + item.cost, 0);
     const maintTotalSalesYear = Object.values(maintCosts).reduce((sum, item) => sum + item.sales, 0);
@@ -220,7 +214,8 @@ const App = () => {
       ['【初期費用 合計】', '', '', c.initialSales],
       [''],
       ['【年間運用費用】'],
-      ['保守費用/年', '', '', c.maintTotalSalesYear],
+      ['監視カメラ保守/年', '', '', c.maintCosts.camera.sales],
+      ['その他保守（センサ・ICT）/年', '', '', c.maintCosts.others.sales],
       ['ソフトウェア/年', '', '', c.swTotalSalesYear],
       ['年間運用費用 合計', '', '', c.runningSalesYear],
       [''],
@@ -271,22 +266,20 @@ const App = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setViewMode('internal')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                  viewMode === 'internal'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${viewMode === 'internal'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
               >
                 <Settings size={18} />
                 内部管理
               </button>
               <button
                 onClick={() => setViewMode('customer')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                  viewMode === 'customer'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${viewMode === 'customer'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
               >
                 <Users size={18} />
                 顧客提示用
@@ -400,10 +393,7 @@ const InternalView = ({
               <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">保守費用（年額）</h3>
               <div className="space-y-2">
                 <CostRow label="監視カメラ保守" cost={ownCosts.maintCamera} price={ownPrices.maintCamera} qty={quantities.camera} onCostChange={(v) => updateOwnCost('maintCamera', v)} onPriceChange={(v) => updateOwnPrice('maintCamera', v)} />
-                <CostRow label="通常センサ保守" cost={ownCosts.maintSensorNormal} price={ownPrices.maintSensorNormal} qty={quantities.sensorNormal} onCostChange={(v) => updateOwnCost('maintSensorNormal', v)} onPriceChange={(v) => updateOwnPrice('maintSensorNormal', v)} />
-                <CostRow label="高性能センサ保守" cost={ownCosts.maintSensorHigh} price={ownPrices.maintSensorHigh} qty={quantities.sensorHigh} onCostChange={(v) => updateOwnCost('maintSensorHigh', v)} onPriceChange={(v) => updateOwnPrice('maintSensorHigh', v)} />
-                <CostRow label="ICT機器(PoE)保守" cost={ownCosts.maintIctPoe} price={ownPrices.maintIctPoe} qty={quantities.ictPoe} onCostChange={(v) => updateOwnCost('maintIctPoe', v)} onPriceChange={(v) => updateOwnPrice('maintIctPoe', v)} />
-                <CostRow label="ICT機器(LTE)保守" cost={ownCosts.maintIctLte} price={ownPrices.maintIctLte} qty={quantities.ictLte} onCostChange={(v) => updateOwnCost('maintIctLte', v)} onPriceChange={(v) => updateOwnPrice('maintIctLte', v)} />
+                <CostRow label="その他保守（センサ類・ICT機器）" cost={ownCosts.maintOthers} price={ownPrices.maintOthers} qty={quantities.sensorNormal + quantities.sensorHigh + quantities.ictPoe + quantities.ictLte} onCostChange={(v) => updateOwnCost('maintOthers', v)} onPriceChange={(v) => updateOwnPrice('maintOthers', v)} />
                 <SubtotalRow label="保守小計/年" cost={c.maintTotalCostYear} sales={c.maintTotalSalesYear} />
               </div>
             </div>
@@ -494,17 +484,21 @@ const CustomerView = ({ calculations, quantities }) => {
   const c = calculations;
 
   const items = [
-    { category: '機器費用', items: [
-      { name: '監視カメラ', price: c.hwCosts.camera.unitPrice, qty: quantities.camera },
-      { name: '海中センサ（通常）', price: c.hwCosts.sensorNormal.unitPrice, qty: quantities.sensorNormal },
-      { name: '海中センサ（高性能）', price: c.hwCosts.sensorHigh.unitPrice, qty: quantities.sensorHigh },
-      { name: 'ICT機器（PoE）', price: c.hwCosts.ictPoe.unitPrice, qty: quantities.ictPoe },
-      { name: 'ICT機器（LTE）', price: c.hwCosts.ictLte.unitPrice, qty: quantities.ictLte },
-    ]},
-    { category: '工事費用', items: [
-      { name: '監視カメラ設置工事', price: c.extCosts.camera.unit, qty: quantities.camera },
-      { name: 'その他ハード設定費', total: c.extCosts.other.cost },
-    ]},
+    {
+      category: '機器費用', items: [
+        { name: '監視カメラ', price: c.hwCosts.camera.unitPrice, qty: quantities.camera },
+        { name: '海中センサ（通常）', price: c.hwCosts.sensorNormal.unitPrice, qty: quantities.sensorNormal },
+        { name: '海中センサ（高性能）', price: c.hwCosts.sensorHigh.unitPrice, qty: quantities.sensorHigh },
+        { name: 'ICT機器（PoE）', price: c.hwCosts.ictPoe.unitPrice, qty: quantities.ictPoe },
+        { name: 'ICT機器（LTE）', price: c.hwCosts.ictLte.unitPrice, qty: quantities.ictLte },
+      ]
+    },
+    {
+      category: '工事費用', items: [
+        { name: '監視カメラ設置工事', price: c.extCosts.camera.unit, qty: quantities.camera },
+        { name: 'その他ハード設定費', total: c.extCosts.other.cost },
+      ]
+    },
   ];
 
   return (
@@ -576,8 +570,12 @@ const CustomerView = ({ calculations, quantities }) => {
           <h3 className="font-bold text-slate-700 mb-4 pb-2 border-b-2 border-slate-200 mt-8">年間運用費用</h3>
           <div className="space-y-2">
             <div className="flex justify-between items-center py-2 border-b border-slate-100">
-              <span className="text-slate-700">保守費用</span>
-              <span className="font-mono font-bold text-slate-800">{formatYen(c.maintTotalSalesYear)} 円/年</span>
+              <span className="text-slate-700">監視カメラ保守</span>
+              <span className="font-mono font-bold text-slate-800">{formatYen(c.maintCosts.camera.sales)} 円/年</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100">
+              <span className="text-slate-700">その他保守（センサ類・ICT機器）</span>
+              <span className="font-mono font-bold text-slate-800">{formatYen(c.maintCosts.others.sales)} 円/年</span>
             </div>
             <div className="flex justify-between items-center py-2 border-b border-slate-100">
               <span className="text-slate-700">モニタリング・通信・ストレージ</span>
@@ -603,9 +601,8 @@ const InputField = ({ label, value, onChange, suffix, highlight }) => (
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full p-2 border rounded-lg text-right font-mono ${
-          highlight ? 'border-blue-400 bg-blue-50 text-blue-700 font-bold' : 'border-slate-300'
-        }`}
+        className={`w-full p-2 border rounded-lg text-right font-mono ${highlight ? 'border-blue-400 bg-blue-50 text-blue-700 font-bold' : 'border-slate-300'
+          }`}
       />
       <span className="ml-2 text-sm text-slate-500 w-8">{suffix}</span>
     </div>
