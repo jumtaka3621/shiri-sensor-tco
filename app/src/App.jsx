@@ -1,71 +1,115 @@
-import React, { useState, useMemo } from 'react';
-import { Calculator, Eye, EyeOff, FileDown, Settings, Users, Building2 } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Calculator, Eye, EyeOff, FileDown, Settings, Users, Building2, RotateCcw, Printer, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 // ヘルパー関数
 const formatYen = (amount) => Math.floor(amount).toLocaleString();
-const parseNum = (val) => {
+const parseNum = (val, max = 100000000) => {
   const n = parseInt(String(val).replace(/[^0-9]/g, ''));
-  return isNaN(n) ? 0 : n;
+  if (isNaN(n)) return 0;
+  if (n < 0) return 0;
+  if (n > max) return max;
+  return n;
+};
+const parseQty = (val) => parseNum(val, 999);
+const parseYen = (val) => parseNum(val, 100000000);
+
+// ローカルストレージキー
+const STORAGE_KEY = 'shiri_sensor_tco_data';
+
+// デフォルト値
+const defaultQuantities = {
+  camera: 2,
+  sensorNormal: 3,
+  sensorHigh: 1,
+  ictPoe: 2,
+  ictLte: 1,
+};
+
+const defaultOwnCosts = {
+  camera: 150000,
+  sensorNormal: 200000,
+  sensorHigh: 500000,
+  ictPoe: 80000,
+  ictLte: 120000,
+  maintCamera: 15000,
+  maintSensorNormal: 20000,
+  maintSensorHigh: 40000,
+  maintIctPoe: 10000,
+  maintIctLte: 15000,
+  monitoring: 30000,
+  lte: 3000,
+  storage: 5000,
+};
+
+const defaultOwnPrices = {
+  camera: 195000,
+  sensorNormal: 260000,
+  sensorHigh: 650000,
+  ictPoe: 104000,
+  ictLte: 156000,
+  maintCamera: 19500,
+  maintSensorNormal: 26000,
+  maintSensorHigh: 52000,
+  maintIctPoe: 13000,
+  maintIctLte: 19500,
+  monitoring: 39000,
+  lte: 3900,
+  storage: 6500,
+};
+
+const defaultExternalCosts = {
+  installCamera: 50000,
+  installOther: 300000,
+};
+
+// ローカルストレージから読み込み
+const loadFromStorage = () => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load from localStorage:', e);
+  }
+  return null;
 };
 
 const App = () => {
   // 表示モード: 'internal' = 内部管理用, 'customer' = 顧客提示用
   const [viewMode, setViewMode] = useState('internal');
 
+  // 初期データ読み込み
+  const savedData = loadFromStorage();
+
   // 数量設定
-  const [quantities, setQuantities] = useState({
-    camera: 2,
-    sensorNormal: 3,
-    sensorHigh: 1,
-    ictPoe: 2,
-    ictLte: 1,
-  });
+  const [quantities, setQuantities] = useState(savedData?.quantities || defaultQuantities);
 
   // 自社収益項目（原価）
-  const [ownCosts, setOwnCosts] = useState({
-    // ハードウェア（単価）
-    camera: 150000,
-    sensorNormal: 200000,
-    sensorHigh: 500000,
-    ictPoe: 80000,
-    ictLte: 120000,
-    // 保守（年額単価）
-    maintCamera: 15000,
-    maintSensorNormal: 20000,
-    maintSensorHigh: 40000,
-    maintIctPoe: 10000,
-    maintIctLte: 15000,
-    // ソフトウェア（月額）
-    monitoring: 30000,
-    lte: 3000,
-    storage: 5000,
-  });
+  const [ownCosts, setOwnCosts] = useState(savedData?.ownCosts || defaultOwnCosts);
 
   // 自社収益項目（販売単価）
-  const [ownPrices, setOwnPrices] = useState({
-    // ハードウェア（単価）
-    camera: 195000,
-    sensorNormal: 260000,
-    sensorHigh: 650000,
-    ictPoe: 104000,
-    ictLte: 156000,
-    // 保守（年額単価）
-    maintCamera: 19500,
-    maintSensorNormal: 26000,
-    maintSensorHigh: 52000,
-    maintIctPoe: 13000,
-    maintIctLte: 19500,
-    // ソフトウェア（月額）
-    monitoring: 39000,
-    lte: 3900,
-    storage: 6500,
-  });
+  const [ownPrices, setOwnPrices] = useState(savedData?.ownPrices || defaultOwnPrices);
 
   // 外部スルー項目（原価=販売価格）
-  const [externalCosts, setExternalCosts] = useState({
-    installCamera: 50000,
-    installOther: 300000,
-  });
+  const [externalCosts, setExternalCosts] = useState(savedData?.externalCosts || defaultExternalCosts);
+
+  // ローカルストレージに保存
+  useEffect(() => {
+    const data = { quantities, ownCosts, ownPrices, externalCosts };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, [quantities, ownCosts, ownPrices, externalCosts]);
+
+  // データリセット
+  const resetData = () => {
+    if (window.confirm('入力データをリセットしますか？')) {
+      setQuantities(defaultQuantities);
+      setOwnCosts(defaultOwnCosts);
+      setOwnPrices(defaultOwnPrices);
+      setExternalCosts(defaultExternalCosts);
+    }
+  };
 
   // 計算ロジック
   const calculations = useMemo(() => {
@@ -145,20 +189,67 @@ const App = () => {
     };
   }, [quantities, ownCosts, ownPrices, externalCosts]);
 
+  // PDF出力（印刷）
+  const exportPDF = () => {
+    window.print();
+  };
+
+  // Excel出力
+  const exportExcel = () => {
+    const c = calculations;
+
+    // 見積もりデータ
+    const data = [
+      ['Shiri Sensor TCO シミュレーション結果'],
+      [''],
+      ['【機器費用（初期）】'],
+      ['項目', '単価', '数量', '金額'],
+      ['監視カメラ', ownPrices.camera, quantities.camera, c.hwCosts.camera.sales],
+      ['通常センサ', ownPrices.sensorNormal, quantities.sensorNormal, c.hwCosts.sensorNormal.sales],
+      ['高性能センサ', ownPrices.sensorHigh, quantities.sensorHigh, c.hwCosts.sensorHigh.sales],
+      ['ICT機器(PoE)', ownPrices.ictPoe, quantities.ictPoe, c.hwCosts.ictPoe.sales],
+      ['ICT機器(LTE)', ownPrices.ictLte, quantities.ictLte, c.hwCosts.ictLte.sales],
+      ['機器費用 小計', '', '', c.hwTotalSales],
+      [''],
+      ['【工事費用（初期）】'],
+      ['項目', '単価', '数量', '金額'],
+      ['監視カメラ設置工事', externalCosts.installCamera, quantities.camera, c.extCosts.camera.cost],
+      ['その他ハード設定費', externalCosts.installOther, '一式', c.extCosts.other.cost],
+      ['工事費用 小計', '', '', c.extTotalCost],
+      [''],
+      ['【初期費用 合計】', '', '', c.initialSales],
+      [''],
+      ['【年間運用費用】'],
+      ['保守費用/年', '', '', c.maintTotalSalesYear],
+      ['ソフトウェア/年', '', '', c.swTotalSalesYear],
+      ['年間運用費用 合計', '', '', c.runningSalesYear],
+      [''],
+      ['【期間別総額】'],
+      ['1年間総額', '', '', c.year1.totalSales],
+      ['3年間総額', '', '', c.year3.totalSales],
+      ['5年間総額', '', '', c.year5.totalSales],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '見積もり');
+    XLSX.writeFile(wb, 'shiri_sensor_tco.xlsx');
+  };
+
   const updateQuantity = (key, value) => {
-    setQuantities(prev => ({ ...prev, [key]: parseNum(value) }));
+    setQuantities(prev => ({ ...prev, [key]: parseQty(value) }));
   };
 
   const updateOwnCost = (key, value) => {
-    setOwnCosts(prev => ({ ...prev, [key]: parseNum(value) }));
+    setOwnCosts(prev => ({ ...prev, [key]: parseYen(value) }));
   };
 
   const updateOwnPrice = (key, value) => {
-    setOwnPrices(prev => ({ ...prev, [key]: parseNum(value) }));
+    setOwnPrices(prev => ({ ...prev, [key]: parseYen(value) }));
   };
 
   const updateExternalCost = (key, value) => {
-    setExternalCosts(prev => ({ ...prev, [key]: parseNum(value) }));
+    setExternalCosts(prev => ({ ...prev, [key]: parseYen(value) }));
   };
 
   return (
@@ -200,6 +291,29 @@ const App = () => {
                 <Users size={18} />
                 顧客提示用
               </button>
+              <div className="flex items-center gap-1 ml-2 pl-2 border-l border-slate-600">
+                <button
+                  onClick={exportPDF}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-orange-600 hover:text-white transition-all"
+                  title="PDF出力（印刷）"
+                >
+                  <Printer size={18} />
+                </button>
+                <button
+                  onClick={exportExcel}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-green-600 hover:text-white transition-all"
+                  title="Excel出力"
+                >
+                  <FileSpreadsheet size={18} />
+                </button>
+                <button
+                  onClick={resetData}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-red-600 hover:text-white transition-all"
+                  title="データをリセット"
+                >
+                  <RotateCcw size={18} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
