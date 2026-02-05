@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Calculator, Eye, EyeOff, FileDown, Settings, Users, Building2, RotateCcw, Printer, FileSpreadsheet } from 'lucide-react';
+import { Calculator, Settings, Users, Building2, RotateCcw, Printer, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // ヘルパー関数
@@ -22,19 +22,17 @@ const defaultQuantities = {
   camera: 2,
   sensorNormal: 3,
   sensorHigh: 1,
-  ictPoe: 2,
-  ictLte: 1,
+  wireless: 2,
 };
 
 const defaultOwnCosts = {
   camera: 150000,
   sensorNormal: 200000,
   sensorHigh: 500000,
-  ictPoe: 80000,
-  ictLte: 120000,
-  // 保守（年額単価）
-  maintCamera: 15000,
-  maintOthers: 20000, // センサ類、ICT機器の保守をまとめる
+  wireless: 80000,
+  miscellaneous: 50000,
+  installCamera: 50000,
+  installOther: 300000,
   monitoring: 30000,
   lte: 3000,
   storage: 5000,
@@ -44,19 +42,49 @@ const defaultOwnPrices = {
   camera: 195000,
   sensorNormal: 260000,
   sensorHigh: 650000,
-  ictPoe: 104000,
-  ictLte: 156000,
-  // 保守（年額単価）
-  maintCamera: 19500,
-  maintOthers: 26000, // センサ類、ICT機器の保守をまとめる
+  wireless: 104000,
+  miscellaneous: 65000,
+  installCamera: 50000,
+  installOther: 300000,
   monitoring: 39000,
   lte: 3900,
   storage: 6500,
 };
 
-const defaultExternalCosts = {
-  installCamera: 50000,
-  installOther: 300000,
+const defaultCompetitorPrices = {
+  camera: 0,
+  installCamera: 0,
+  sensorNormal: 0,
+  sensorHigh: 0,
+  wireless: 0,
+  miscellaneous: 0,
+  installOther: 0,
+  monitoring: 0,
+  lte: 0,
+  storage: 0,
+};
+
+// 共通の項目定義
+const getItemDefs = (quantities, calculations) => {
+  const c = calculations;
+  const q = quantities;
+  return {
+    initialItems: [
+      { key: 'camera', label: '監視カメラ', category: '監視カメラ', unitPrice: c.cameraCosts.camera.unitPrice, qty: q.camera },
+      { key: 'installCamera', label: '設置設定費', category: '監視カメラ', unitPrice: c.cameraCosts.installCamera.unitPrice, qty: q.camera },
+      { key: 'sensorNormal', label: 'アクアテック製水質センサー', category: 'センサ機器', unitPrice: c.sensorIctCosts.sensorNormal.unitPrice, qty: q.sensorNormal },
+      { key: 'wireless', label: '無線オプション', category: 'センサ機器', unitPrice: c.sensorIctCosts.wireless.unitPrice, qty: q.wireless },
+      { key: 'installOther', label: 'ハード設定費', category: 'センサ機器', unitPrice: c.sensorIctCosts.installOther.unitPrice, qty: 1, isLumpSum: true },
+    ],
+    miscItems: [
+      { key: 'miscellaneous', label: 'ステンレススタンド/PoEHUB', category: 'ステンレススタンド/PoEHUB', unitPrice: c.miscCosts.miscellaneous.unitPrice, qty: 1, isLumpSum: true },
+    ],
+    annualItems: [
+      { key: 'monitoring', label: 'モニタリング' },
+      { key: 'lte', label: 'LTE通信料' },
+      { key: 'storage', label: 'ストレージ' },
+    ],
+  };
 };
 
 // ローカルストレージから読み込み
@@ -64,46 +92,39 @@ const loadFromStorage = () => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      // データの整合性チェック
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Failed to load from localStorage:', e);
+    // 壊れたデータをクリア
+    localStorage.removeItem(STORAGE_KEY);
   }
   return null;
 };
 
 const App = () => {
-  // 表示モード: 'internal' = 内部管理用, 'customer' = 顧客提示用
   const [viewMode, setViewMode] = useState('internal');
-
-  // 初期データ読み込み
   const savedData = loadFromStorage();
+  const [quantities, setQuantities] = useState({ ...defaultQuantities, ...(savedData?.quantities || {}) });
+  const [ownCosts, setOwnCosts] = useState({ ...defaultOwnCosts, ...(savedData?.ownCosts || {}) });
+  const [ownPrices, setOwnPrices] = useState({ ...defaultOwnPrices, ...(savedData?.ownPrices || {}) });
+  const [competitorPrices, setCompetitorPrices] = useState({ ...defaultCompetitorPrices, ...(savedData?.competitorPrices || {}) });
 
-  // 数量設定
-  const [quantities, setQuantities] = useState(savedData?.quantities || defaultQuantities);
-
-  // 自社収益項目（原価）
-  const [ownCosts, setOwnCosts] = useState(savedData ? { ...defaultOwnCosts, ...savedData.ownCosts } : defaultOwnCosts);
-
-  // 自社収益項目（販売単価）
-  const [ownPrices, setOwnPrices] = useState(savedData ? { ...defaultOwnPrices, ...savedData.ownPrices } : defaultOwnPrices);
-
-  // 外部スルー項目（原価=販売価格）
-  const [externalCosts, setExternalCosts] = useState(savedData?.externalCosts || defaultExternalCosts);
-
-  // ローカルストレージに保存
   useEffect(() => {
-    const data = { quantities, ownCosts, ownPrices, externalCosts };
+    const data = { quantities, ownCosts, ownPrices, competitorPrices };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }, [quantities, ownCosts, ownPrices, externalCosts]);
+  }, [quantities, ownCosts, ownPrices, competitorPrices]);
 
-  // データリセット
   const resetData = () => {
     if (window.confirm('入力データをリセットしますか？')) {
       setQuantities(defaultQuantities);
       setOwnCosts(defaultOwnCosts);
       setOwnPrices(defaultOwnPrices);
-      setExternalCosts(defaultExternalCosts);
+      setCompetitorPrices(defaultCompetitorPrices);
     }
   };
 
@@ -111,146 +132,115 @@ const App = () => {
   const calculations = useMemo(() => {
     const q = quantities;
 
-    // === 自社収益項目 ===
-    // ハードウェア初期費用
-    const hwCosts = {
+    const cameraCosts = {
       camera: { cost: ownCosts.camera * q.camera, sales: ownPrices.camera * q.camera, qty: q.camera, unitCost: ownCosts.camera, unitPrice: ownPrices.camera },
+      installCamera: { cost: ownCosts.installCamera * q.camera, sales: ownPrices.installCamera * q.camera, qty: q.camera, unitCost: ownCosts.installCamera, unitPrice: ownPrices.installCamera },
+    };
+    const cameraTotalCost = Object.values(cameraCosts).reduce((sum, item) => sum + item.cost, 0);
+    const cameraTotalSales = Object.values(cameraCosts).reduce((sum, item) => sum + item.sales, 0);
+
+    const sensorIctCosts = {
       sensorNormal: { cost: ownCosts.sensorNormal * q.sensorNormal, sales: ownPrices.sensorNormal * q.sensorNormal, qty: q.sensorNormal, unitCost: ownCosts.sensorNormal, unitPrice: ownPrices.sensorNormal },
+      wireless: { cost: ownCosts.wireless * q.wireless, sales: ownPrices.wireless * q.wireless, qty: q.wireless, unitCost: ownCosts.wireless, unitPrice: ownPrices.wireless },
+      installOther: { cost: ownCosts.installOther, sales: ownPrices.installOther, qty: 1, unitCost: ownCosts.installOther, unitPrice: ownPrices.installOther },
+    };
+    const sensorIctTotalCost = Object.values(sensorIctCosts).reduce((sum, item) => sum + item.cost, 0);
+    const sensorIctTotalSales = Object.values(sensorIctCosts).reduce((sum, item) => sum + item.sales, 0);
+
+    const miscCosts = {
+      miscellaneous: { cost: ownCosts.miscellaneous, sales: ownPrices.miscellaneous, qty: 1, unitCost: ownCosts.miscellaneous, unitPrice: ownPrices.miscellaneous },
+    };
+    const miscTotalCost = miscCosts.miscellaneous.cost;
+    const miscTotalSales = miscCosts.miscellaneous.sales;
+
+    const multiSensorCosts = {
       sensorHigh: { cost: ownCosts.sensorHigh * q.sensorHigh, sales: ownPrices.sensorHigh * q.sensorHigh, qty: q.sensorHigh, unitCost: ownCosts.sensorHigh, unitPrice: ownPrices.sensorHigh },
-      ictPoe: { cost: ownCosts.ictPoe * q.ictPoe, sales: ownPrices.ictPoe * q.ictPoe, qty: q.ictPoe, unitCost: ownCosts.ictPoe, unitPrice: ownPrices.ictPoe },
-      ictLte: { cost: ownCosts.ictLte * q.ictLte, sales: ownPrices.ictLte * q.ictLte, qty: q.ictLte, unitCost: ownCosts.ictLte, unitPrice: ownPrices.ictLte },
     };
-    const hwTotalCost = Object.values(hwCosts).reduce((sum, item) => sum + item.cost, 0);
-    const hwTotalSales = Object.values(hwCosts).reduce((sum, item) => sum + item.sales, 0);
+    const multiSensorTotalCost = multiSensorCosts.sensorHigh.cost;
+    const multiSensorTotalSales = multiSensorCosts.sensorHigh.sales;
 
-    // 保守費用（年額）
-    const othersQty = q.sensorNormal + q.sensorHigh + q.ictPoe + q.ictLte;
-    const maintCosts = {
-      camera: { cost: ownCosts.maintCamera * q.camera, sales: ownPrices.maintCamera * q.camera, qty: q.camera, unitCost: ownCosts.maintCamera, unitPrice: ownPrices.maintCamera },
-      others: { cost: ownCosts.maintOthers * othersQty, sales: ownPrices.maintOthers * othersQty, qty: othersQty, unitCost: ownCosts.maintOthers, unitPrice: ownPrices.maintOthers },
-    };
-    const maintTotalCostYear = Object.values(maintCosts).reduce((sum, item) => sum + item.cost, 0);
-    const maintTotalSalesYear = Object.values(maintCosts).reduce((sum, item) => sum + item.sales, 0);
+    const initialCost = cameraTotalCost + sensorIctTotalCost + multiSensorTotalCost + miscTotalCost;
+    const initialSales = cameraTotalSales + sensorIctTotalSales + multiSensorTotalSales + miscTotalSales;
+    const initialProfit = initialSales - initialCost;
 
-    // ソフトウェア費用（月額 → 年額）
+    const lteQty = q.sensorNormal + q.sensorHigh;
     const swCosts = {
       monitoring: { costMonth: ownCosts.monitoring, costYear: ownCosts.monitoring * 12, salesMonth: ownPrices.monitoring, salesYear: ownPrices.monitoring * 12 },
-      lte: { costMonth: ownCosts.lte * q.ictLte, costYear: ownCosts.lte * q.ictLte * 12, salesMonth: ownPrices.lte * q.ictLte, salesYear: ownPrices.lte * q.ictLte * 12, qty: q.ictLte, unitCost: ownCosts.lte, unitPrice: ownPrices.lte },
+      lte: { costMonth: ownCosts.lte * lteQty, costYear: ownCosts.lte * lteQty * 12, salesMonth: ownPrices.lte * lteQty, salesYear: ownPrices.lte * lteQty * 12, qty: lteQty, unitCost: ownCosts.lte, unitPrice: ownPrices.lte },
       storage: { costMonth: ownCosts.storage, costYear: ownCosts.storage * 12, salesMonth: ownPrices.storage, salesYear: ownPrices.storage * 12 },
     };
     const swTotalCostYear = swCosts.monitoring.costYear + swCosts.lte.costYear + swCosts.storage.costYear;
     const swTotalSalesYear = swCosts.monitoring.salesYear + swCosts.lte.salesYear + swCosts.storage.salesYear;
 
-    // === 外部スルー項目（初期費用のみ） ===
-    const extCosts = {
-      camera: { cost: externalCosts.installCamera * q.camera, qty: q.camera, unit: externalCosts.installCamera },
-      other: { cost: externalCosts.installOther },
-    };
-    const extTotalCost = extCosts.camera.cost + extCosts.other.cost;
-    // 外部スルーは粗利なし: 販売価格 = 原価
-    const extTotalSales = extTotalCost;
-
-    // === 合計計算 ===
-    // 初期費用
-    const initialCost = hwTotalCost + extTotalCost;
-    const initialSales = hwTotalSales + extTotalSales;
-    const initialProfit = initialSales - initialCost;
-
-    // 年間ランニング（保守 + ソフト）
-    const runningCostYear = maintTotalCostYear + swTotalCostYear;
-    const runningSalesYear = maintTotalSalesYear + swTotalSalesYear;
+    const runningCostYear = swTotalCostYear;
+    const runningSalesYear = swTotalSalesYear;
     const runningProfitYear = runningSalesYear - runningCostYear;
 
-    // 期間別総額
-    const getYearTotal = (years) => {
-      const totalCost = initialCost + runningCostYear * years;
-      const totalSales = initialSales + runningSalesYear * years;
-      const totalProfit = totalSales - totalCost;
-      const profitRatio = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-      return { totalCost, totalSales, totalProfit, profitRatio };
-    };
+    const cp = competitorPrices;
+    const compCameraTotal = cp.camera * q.camera + cp.installCamera * q.camera;
+    const compSensorTotal = cp.sensorNormal * q.sensorNormal + cp.wireless * q.wireless + cp.installOther * q.sensorNormal;
+    const compMiscTotal = cp.miscellaneous;
+    const compInitial = compCameraTotal + compSensorTotal + compMiscTotal;
+    const compAnnual =
+      cp.monitoring * 12 +
+      cp.lte * q.sensorNormal * 12 +
+      cp.storage * 12;
 
     return {
-      hwCosts, hwTotalCost, hwTotalSales,
-      maintCosts, maintTotalCostYear, maintTotalSalesYear,
+      cameraCosts, cameraTotalCost, cameraTotalSales,
+      sensorIctCosts, sensorIctTotalCost, sensorIctTotalSales,
+      miscCosts, miscTotalCost, miscTotalSales,
+      multiSensorCosts, multiSensorTotalCost, multiSensorTotalSales,
       swCosts, swTotalCostYear, swTotalSalesYear,
-      extCosts, extTotalCost, extTotalSales,
       initialCost, initialSales, initialProfit,
       runningCostYear, runningSalesYear, runningProfitYear,
-      year1: getYearTotal(1),
-      year3: getYearTotal(3),
-      year5: getYearTotal(5),
+      compCameraTotal, compSensorTotal, compMiscTotal,
+      compInitial, compAnnual,
     };
-  }, [quantities, ownCosts, ownPrices, externalCosts]);
+  }, [quantities, ownCosts, ownPrices, competitorPrices]);
 
-  // PDF出力（印刷）
   const exportPDF = () => {
     window.print();
   };
 
-  // Excel出力
   const exportExcel = () => {
     const c = calculations;
-
-    // 見積もりデータ
     const data = [
-      ['Shiri Sensor TCO シミュレーション結果'],
+      ['水質モニタリングアプリケーション シミュレーション結果'],
       [''],
-      ['【機器費用（初期）】'],
+      ['【初期費用】'],
       ['項目', '単価', '数量', '金額'],
-      ['監視カメラ', ownPrices.camera, quantities.camera, c.hwCosts.camera.sales],
-      ['通常センサ', ownPrices.sensorNormal, quantities.sensorNormal, c.hwCosts.sensorNormal.sales],
-      ['高性能センサ', ownPrices.sensorHigh, quantities.sensorHigh, c.hwCosts.sensorHigh.sales],
-      ['ICT機器(PoE)', ownPrices.ictPoe, quantities.ictPoe, c.hwCosts.ictPoe.sales],
-      ['ICT機器(LTE)', ownPrices.ictLte, quantities.ictLte, c.hwCosts.ictLte.sales],
-      ['機器費用 小計', '', '', c.hwTotalSales],
+      ['監視カメラ', ownPrices.camera, quantities.camera, c.cameraCosts.camera.sales],
+      ['監視カメラ設置設定費', ownPrices.installCamera, quantities.camera, c.cameraCosts.installCamera.sales],
+      ['アクアテック製水質センサー', ownPrices.sensorNormal, quantities.sensorNormal, c.sensorIctCosts.sensorNormal.sales],
+      ['無線オプション', ownPrices.wireless, quantities.wireless, c.sensorIctCosts.wireless.sales],
+      ['ハード設定費', ownPrices.installOther, '一式', c.sensorIctCosts.installOther.sales],
+      ['ザイレム製水質センサ', ownPrices.sensorHigh, quantities.sensorHigh, c.multiSensorCosts.sensorHigh.sales],
+      ['ステンレススタンド/PoEHUB', ownPrices.miscellaneous, '一式', c.miscCosts.miscellaneous.sales],
+      ['初期費用 合計', '', '', c.initialSales],
       [''],
-      ['【工事費用（初期）】'],
-      ['項目', '単価', '数量', '金額'],
-      ['監視カメラ設置工事', externalCosts.installCamera, quantities.camera, c.extCosts.camera.cost],
-      ['その他ハード設定費', externalCosts.installOther, '一式', c.extCosts.other.cost],
-      ['工事費用 小計', '', '', c.extTotalCost],
-      [''],
-      ['【初期費用 合計】', '', '', c.initialSales],
-      [''],
-      ['【年間運用費用】'],
-      ['監視カメラ保守/年', '', '', c.maintCosts.camera.sales],
-      ['その他保守（センサ・ICT）/年', '', '', c.maintCosts.others.sales],
-      ['ソフトウェア/年', '', '', c.swTotalSalesYear],
+      ['【年間運用費用（水質モニタリングアプリケーション）】'],
+      ['項目', '', '', '年額'],
+      ['モニタリング', '', '', c.swCosts.monitoring.salesYear],
+      ['LTE通信料', '', '', c.swCosts.lte.salesYear],
+      ['ストレージ', '', '', c.swCosts.storage.salesYear],
       ['年間運用費用 合計', '', '', c.runningSalesYear],
-      [''],
-      ['【期間別総額】'],
-      ['1年間総額', '', '', c.year1.totalSales],
-      ['3年間総額', '', '', c.year3.totalSales],
-      ['5年間総額', '', '', c.year5.totalSales],
     ];
-
     const ws = XLSX.utils.aoa_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '見積もり');
-    XLSX.writeFile(wb, 'shiri_sensor_tco.xlsx');
+    XLSX.writeFile(wb, 'water_monitoring_tco.xlsx');
   };
 
-  const updateQuantity = (key, value) => {
-    setQuantities(prev => ({ ...prev, [key]: parseQty(value) }));
-  };
-
-  const updateOwnCost = (key, value) => {
-    setOwnCosts(prev => ({ ...prev, [key]: parseYen(value) }));
-  };
-
-  const updateOwnPrice = (key, value) => {
-    setOwnPrices(prev => ({ ...prev, [key]: parseYen(value) }));
-  };
-
-  const updateExternalCost = (key, value) => {
-    setExternalCosts(prev => ({ ...prev, [key]: parseYen(value) }));
-  };
+  const updateQuantity = (key, value) => setQuantities(prev => ({ ...prev, [key]: parseQty(value) }));
+  const updateOwnCost = (key, value) => setOwnCosts(prev => ({ ...prev, [key]: parseYen(value) }));
+  const updateOwnPrice = (key, value) => setOwnPrices(prev => ({ ...prev, [key]: parseYen(value) }));
+  const updateCompetitorPrice = (key, value) => setCompetitorPrices(prev => ({ ...prev, [key]: parseYen(value) }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6 font-sans">
       {/* ヘッダー */}
-      <div className="max-w-7xl mx-auto mb-6">
+      <div className="max-w-7xl mx-auto mb-6 print-header-compact">
         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -258,52 +248,33 @@ const App = () => {
                 <Calculator size={32} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">Shiri Sensor TCO Simulator</h1>
-                <p className="text-slate-400 text-sm">費用シミュレーション（1/3/5年）</p>
+                <h1 className="text-2xl font-bold">水質モニタリングアプリケーション Simulator</h1>
+                <p className="text-slate-400 text-sm">費用シミュレーション</p>
               </div>
             </div>
-
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setViewMode('internal')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${viewMode === 'internal'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${viewMode === 'internal' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
               >
                 <Settings size={18} />
                 内部管理
               </button>
               <button
                 onClick={() => setViewMode('customer')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${viewMode === 'customer'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${viewMode === 'customer' ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
               >
                 <Users size={18} />
                 顧客提示用
               </button>
               <div className="flex items-center gap-1 ml-2 pl-2 border-l border-slate-600">
-                <button
-                  onClick={exportPDF}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-orange-600 hover:text-white transition-all"
-                  title="PDF出力（印刷）"
-                >
+                <button onClick={exportPDF} className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-orange-600 hover:text-white transition-all" title="PDF出力（印刷）">
                   <Printer size={18} />
                 </button>
-                <button
-                  onClick={exportExcel}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-green-600 hover:text-white transition-all"
-                  title="Excel出力"
-                >
+                <button onClick={exportExcel} className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-green-600 hover:text-white transition-all" title="Excel出力">
                   <FileSpreadsheet size={18} />
                 </button>
-                <button
-                  onClick={resetData}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-red-600 hover:text-white transition-all"
-                  title="データをリセット"
-                >
+                <button onClick={resetData} className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-slate-700 text-slate-300 hover:bg-red-600 hover:text-white transition-all" title="データをリセット">
                   <RotateCcw size={18} />
                 </button>
               </div>
@@ -317,274 +288,253 @@ const App = () => {
           quantities={quantities}
           ownCosts={ownCosts}
           ownPrices={ownPrices}
-          externalCosts={externalCosts}
+          competitorPrices={competitorPrices}
           calculations={calculations}
           updateQuantity={updateQuantity}
           updateOwnCost={updateOwnCost}
           updateOwnPrice={updateOwnPrice}
-          updateExternalCost={updateExternalCost}
+          updateCompetitorPrice={updateCompetitorPrice}
         />
       ) : (
-        <CustomerView calculations={calculations} quantities={quantities} />
+        <CustomerView
+          calculations={calculations}
+          quantities={quantities}
+          competitorPrices={competitorPrices}
+        />
       )}
     </div>
   );
 };
 
+// ========================================
 // 内部管理用ビュー
+// ========================================
 const InternalView = ({
-  quantities, ownCosts, ownPrices, externalCosts, calculations,
-  updateQuantity, updateOwnCost, updateOwnPrice, updateExternalCost
+  quantities, ownCosts, ownPrices, competitorPrices, calculations,
+  updateQuantity, updateOwnCost, updateOwnPrice, updateCompetitorPrice
 }) => {
   const c = calculations;
+  const { initialItems, annualItems } = getItemDefs(quantities, calculations);
+
+  // カテゴリ分け
+  const categories = [];
+  let currentCat = null;
+  initialItems.forEach(item => {
+    if (!currentCat || currentCat.name !== item.category) {
+      currentCat = { name: item.category, items: [] };
+      categories.push(currentCat);
+    }
+    currentCat.items.push(item);
+  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* 設定パネル */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border border-slate-200">
-        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-          <Settings size={20} className="text-blue-600" />
-          基本設定
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <InputField label="監視カメラ" value={quantities.camera} onChange={(v) => updateQuantity('camera', v)} suffix="台" />
-          <InputField label="通常センサ" value={quantities.sensorNormal} onChange={(v) => updateQuantity('sensorNormal', v)} suffix="台" />
-          <InputField label="高性能センサ" value={quantities.sensorHigh} onChange={(v) => updateQuantity('sensorHigh', v)} suffix="台" />
-          <InputField label="ICT機器(PoE)" value={quantities.ictPoe} onChange={(v) => updateQuantity('ictPoe', v)} suffix="台" />
-          <InputField label="ICT機器(LTE)" value={quantities.ictLte} onChange={(v) => updateQuantity('ictLte', v)} suffix="台" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 自社収益項目 */}
-        <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* 左: 自社 */}
+        <div className="lg:col-span-7 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
           <div className="bg-blue-600 text-white px-6 py-4">
             <h2 className="font-bold flex items-center gap-2">
               <Building2 size={20} />
-              自社収益項目（粗利あり）
+              自社
             </h2>
           </div>
           <div className="p-6 space-y-6">
-            {/* ヘッダー */}
+            {/* 基本数量 */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2 flex items-center gap-2">
+                <Settings size={16} className="text-blue-600" />
+                基本数量
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <InputField label="監視カメラ" value={quantities.camera} onChange={(v) => updateQuantity('camera', v)} suffix="台" />
+                <InputField label="アクアテック製水質センサー" value={quantities.sensorNormal} onChange={(v) => updateQuantity('sensorNormal', v)} suffix="台" />
+                <InputField label="無線オプション" value={quantities.wireless} onChange={(v) => updateQuantity('wireless', v)} suffix="台" />
+              </div>
+            </div>
+
+            {/* 収益項目ヘッダー */}
             <div className="grid grid-cols-12 gap-2 items-center text-xs font-bold text-slate-500 border-b pb-2">
               <span className="col-span-2">項目</span>
-              <span className="col-span-2 text-center text-orange-600">原価</span>
               <span className="col-span-2 text-center text-blue-600">販売単価</span>
+              <span className="col-span-2 text-center text-orange-600">原価</span>
               <span className="col-span-1 text-center">数量</span>
-              <span className="col-span-2 text-right text-orange-600">原価計</span>
               <span className="col-span-3 text-right text-blue-600">販売計</span>
+              <span className="col-span-2 text-right text-orange-600">原価計</span>
             </div>
 
-            {/* ハードウェア */}
+            {/* センサ機器 */}
             <div>
-              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">ハードウェア（初期費用）</h3>
+              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">センサ機器（初期費用）</h3>
               <div className="space-y-2">
-                <CostRow label="監視カメラ" cost={ownCosts.camera} price={ownPrices.camera} qty={quantities.camera} onCostChange={(v) => updateOwnCost('camera', v)} onPriceChange={(v) => updateOwnPrice('camera', v)} />
-                <CostRow label="通常センサ" cost={ownCosts.sensorNormal} price={ownPrices.sensorNormal} qty={quantities.sensorNormal} onCostChange={(v) => updateOwnCost('sensorNormal', v)} onPriceChange={(v) => updateOwnPrice('sensorNormal', v)} />
-                <CostRow label="高性能センサ" cost={ownCosts.sensorHigh} price={ownPrices.sensorHigh} qty={quantities.sensorHigh} onCostChange={(v) => updateOwnCost('sensorHigh', v)} onPriceChange={(v) => updateOwnPrice('sensorHigh', v)} />
-                <CostRow label="ICT機器(PoE)" cost={ownCosts.ictPoe} price={ownPrices.ictPoe} qty={quantities.ictPoe} onCostChange={(v) => updateOwnCost('ictPoe', v)} onPriceChange={(v) => updateOwnPrice('ictPoe', v)} />
-                <CostRow label="ICT機器(LTE)" cost={ownCosts.ictLte} price={ownPrices.ictLte} qty={quantities.ictLte} onCostChange={(v) => updateOwnCost('ictLte', v)} onPriceChange={(v) => updateOwnPrice('ictLte', v)} />
-                <SubtotalRow label="ハード小計" cost={c.hwTotalCost} sales={c.hwTotalSales} />
+                <CostRow label="アクアテック製水質センサー" cost={ownCosts.sensorNormal} price={ownPrices.sensorNormal} qty={quantities.sensorNormal} onCostChange={(v) => updateOwnCost('sensorNormal', v)} onPriceChange={(v) => updateOwnPrice('sensorNormal', v)} />
+                <CostRow label="無線オプション" cost={ownCosts.wireless} price={ownPrices.wireless} qty={quantities.wireless} onCostChange={(v) => updateOwnCost('wireless', v)} onPriceChange={(v) => updateOwnPrice('wireless', v)} />
+                <CostRow label="ハード設定費" cost={ownCosts.installOther} price={ownPrices.installOther} qty={1} onCostChange={(v) => updateOwnCost('installOther', v)} onPriceChange={(v) => updateOwnPrice('installOther', v)} />
+                <SubtotalRow label="センサ機器小計" cost={c.sensorIctTotalCost} sales={c.sensorIctTotalSales} />
               </div>
             </div>
 
-            {/* 保守 */}
+            {/* 水質モニタリングアプリケーション */}
             <div>
-              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">保守費用（年額）</h3>
-              <div className="space-y-2">
-                <CostRow label="監視カメラ保守" cost={ownCosts.maintCamera} price={ownPrices.maintCamera} qty={quantities.camera} onCostChange={(v) => updateOwnCost('maintCamera', v)} onPriceChange={(v) => updateOwnPrice('maintCamera', v)} />
-                <CostRow label="その他保守（センサ類・ICT機器）" cost={ownCosts.maintOthers} price={ownPrices.maintOthers} qty={quantities.sensorNormal + quantities.sensorHigh + quantities.ictPoe + quantities.ictLte} onCostChange={(v) => updateOwnCost('maintOthers', v)} onPriceChange={(v) => updateOwnPrice('maintOthers', v)} />
-                <SubtotalRow label="保守小計/年" cost={c.maintTotalCostYear} sales={c.maintTotalSalesYear} />
-              </div>
-            </div>
-
-            {/* ソフトウェア */}
-            <div>
-              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">ソフトウェア（月額）</h3>
+              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">水質モニタリングアプリケーション（月額）</h3>
               <div className="space-y-2">
                 <CostRow label="モニタリング" cost={ownCosts.monitoring} price={ownPrices.monitoring} qty={1} onCostChange={(v) => updateOwnCost('monitoring', v)} onPriceChange={(v) => updateOwnPrice('monitoring', v)} />
-                <CostRow label="LTE通信料" cost={ownCosts.lte} price={ownPrices.lte} qty={quantities.ictLte} onCostChange={(v) => updateOwnCost('lte', v)} onPriceChange={(v) => updateOwnPrice('lte', v)} />
+                <CostRow label="LTE通信料" cost={ownCosts.lte} price={ownPrices.lte} qty={quantities.sensorNormal + quantities.sensorHigh} onCostChange={(v) => updateOwnCost('lte', v)} onPriceChange={(v) => updateOwnPrice('lte', v)} />
                 <CostRow label="ストレージ" cost={ownCosts.storage} price={ownPrices.storage} qty={1} onCostChange={(v) => updateOwnCost('storage', v)} onPriceChange={(v) => updateOwnPrice('storage', v)} />
-                <SubtotalRow label="ソフト小計/年" cost={c.swTotalCostYear} sales={c.swTotalSalesYear} />
+                <SubtotalRow label="システム小計/年" cost={c.swTotalCostYear} sales={c.swTotalSalesYear} />
+              </div>
+            </div>
+
+            {/* ザイレム製水質センサ（別枠） */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">ザイレム製水質センサ（初期費用）</h3>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <InputField label="数量" value={quantities.sensorHigh} onChange={(v) => updateQuantity('sensorHigh', v)} suffix="台" />
+                </div>
+                <CostRow label="ザイレム製水質センサ" cost={ownCosts.sensorHigh} price={ownPrices.sensorHigh} qty={quantities.sensorHigh} onCostChange={(v) => updateOwnCost('sensorHigh', v)} onPriceChange={(v) => updateOwnPrice('sensorHigh', v)} />
+                <SubtotalRow label="ザイレム製水質センサ小計" cost={c.multiSensorTotalCost} sales={c.multiSensorTotalSales} />
+              </div>
+            </div>
+
+            {/* 監視カメラ */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">監視カメラ（初期費用）</h3>
+              <div className="space-y-2">
+                <CostRow label="監視カメラ" cost={ownCosts.camera} price={ownPrices.camera} qty={quantities.camera} onCostChange={(v) => updateOwnCost('camera', v)} onPriceChange={(v) => updateOwnPrice('camera', v)} />
+                <CostRow label="設置設定費" cost={ownCosts.installCamera} price={ownPrices.installCamera} qty={quantities.camera} onCostChange={(v) => updateOwnCost('installCamera', v)} onPriceChange={(v) => updateOwnPrice('installCamera', v)} />
+                <SubtotalRow label="カメラ小計" cost={c.cameraTotalCost} sales={c.cameraTotalSales} />
+              </div>
+            </div>
+
+            {/* ステンレススタンド/PoEHUB（別枠） */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">ステンレススタンド/PoEHUB</h3>
+              <div className="space-y-2">
+                <CostRow label="ステンレススタンド/PoEHUB" cost={ownCosts.miscellaneous} price={ownPrices.miscellaneous} qty={1} onCostChange={(v) => updateOwnCost('miscellaneous', v)} onPriceChange={(v) => updateOwnPrice('miscellaneous', v)} />
+                <SubtotalRow label="ステンレススタンド/PoEHUB小計" cost={c.miscTotalCost} sales={c.miscTotalSales} />
               </div>
             </div>
           </div>
         </div>
 
-        {/* 外部スルー項目 */}
-        <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-          <div className="bg-slate-600 text-white px-6 py-4">
-            <h2 className="font-bold flex items-center gap-2">
-              <EyeOff size={20} />
-              外部スルー項目（粗利なし）
-            </h2>
+        {/* 右: 他社（コンパクト） */}
+        <div className="lg:col-span-5 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+          <div className="bg-red-700 text-white px-4 py-4">
+            <h2 className="font-bold">他社</h2>
           </div>
-          <div className="p-6">
-            <h3 className="text-sm font-bold text-slate-600 mb-3 border-b pb-2">設置・設定費用（初期費用）</h3>
-            <div className="space-y-2">
-              <ExternalCostRow label="監視カメラ設置" cost={externalCosts.installCamera} qty={quantities.camera} onChange={(v) => updateExternalCost('installCamera', v)} />
-              <ExternalCostRow label="その他ハード設定費" cost={externalCosts.installOther} onChange={(v) => updateExternalCost('installOther', v)} isLumpSum />
-              <div className="flex justify-between items-center pt-3 border-t border-slate-200 mt-3">
-                <span className="font-bold text-slate-700">設置費用合計</span>
-                <span className="font-mono font-bold text-slate-800">{formatYen(c.extTotalCost)} 円</span>
+          <div className="p-4 space-y-5">
+            {/* 基本数量 */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-600 mb-2 border-b pb-2 flex items-center gap-2">
+                <Settings size={16} className="text-red-600" />
+                基本数量
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                <InputField label="監視カメラ" value={quantities.camera} onChange={(v) => updateQuantity('camera', v)} suffix="台" />
+                <InputField label="水温センサー" value={quantities.sensorNormal} onChange={(v) => updateQuantity('sensorNormal', v)} suffix="台" />
+                <InputField label="無線オプション" value={quantities.wireless} onChange={(v) => updateQuantity('wireless', v)} suffix="台" />
               </div>
             </div>
-          </div>
 
-          {/* 粗利サマリー */}
-          <div className="bg-slate-50 p-6 border-t border-slate-200">
-            <h3 className="text-sm font-bold text-slate-600 mb-4">原価・粗利サマリー</h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-5 gap-2 text-xs font-bold text-slate-500">
-                <span>項目</span>
-                <span className="text-right text-orange-600">原価計</span>
-                <span className="text-right text-blue-600">販売計</span>
-                <span className="text-right text-emerald-600">粗利額</span>
-                <span className="text-right">粗利率</span>
+            {/* センサ機器 */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-600 mb-2 border-b pb-1">センサ機器（初期費用）</h3>
+              <div className="space-y-1">
+                <CompCostRow label="水温センサー" price={competitorPrices.sensorNormal} qty={quantities.sensorNormal} onChange={(v) => updateCompetitorPrice('sensorNormal', v)} />
+                <CompCostRow label="無線オプション" price={competitorPrices.wireless} qty={quantities.wireless} onChange={(v) => updateCompetitorPrice('wireless', v)} />
+                <CompCostRow label="ハード設定費" price={competitorPrices.installOther} qty={quantities.sensorNormal} onChange={(v) => updateCompetitorPrice('installOther', v)} />
+                <CompSubtotalRow label="センサ機器小計" sales={c.compSensorTotal} />
               </div>
-              <div className="grid grid-cols-5 gap-2 text-sm">
-                <span>初期費用</span>
-                <span className="text-right font-mono text-orange-600">{formatYen(c.initialCost)}</span>
-                <span className="text-right font-mono text-blue-600">{formatYen(c.initialSales)}</span>
-                <span className="text-right font-mono text-emerald-600">{formatYen(c.initialProfit)}</span>
-                <span className="text-right font-mono">{c.initialSales > 0 ? ((c.initialProfit / c.initialSales) * 100).toFixed(1) : 0}%</span>
+            </div>
+
+            {/* 水質モニタリングアプリケーション */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-600 mb-2 border-b pb-1">水質モニタリングアプリケーション（月額）</h3>
+              <div className="space-y-1">
+                <CompCostRow label="モニタリング" price={competitorPrices.monitoring} qty={1} onChange={(v) => updateCompetitorPrice('monitoring', v)} />
+                <CompCostRow label="LTE通信料" price={competitorPrices.lte} qty={quantities.sensorNormal} onChange={(v) => updateCompetitorPrice('lte', v)} />
+                <CompCostRow label="ストレージ" price={competitorPrices.storage} qty={1} onChange={(v) => updateCompetitorPrice('storage', v)} />
+                <CompSubtotalRow label="システム小計/年" sales={c.compAnnual} />
               </div>
-              <div className="grid grid-cols-5 gap-2 text-sm">
-                <span>年間運用</span>
-                <span className="text-right font-mono text-orange-600">{formatYen(c.runningCostYear)}</span>
-                <span className="text-right font-mono text-blue-600">{formatYen(c.runningSalesYear)}</span>
-                <span className="text-right font-mono text-emerald-600">{formatYen(c.runningProfitYear)}</span>
-                <span className="text-right font-mono">{c.runningSalesYear > 0 ? ((c.runningProfitYear / c.runningSalesYear) * 100).toFixed(1) : 0}%</span>
+            </div>
+
+            {/* 監視カメラ */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-600 mb-2 border-b pb-1">監視カメラ（初期費用）</h3>
+              <div className="space-y-1">
+                <CompCostRow label="監視カメラ" price={competitorPrices.camera} qty={quantities.camera} onChange={(v) => updateCompetitorPrice('camera', v)} />
+                <CompCostRow label="設置設定費" price={competitorPrices.installCamera} qty={quantities.camera} onChange={(v) => updateCompetitorPrice('installCamera', v)} />
+                <CompSubtotalRow label="カメラ小計" sales={competitorPrices.camera * quantities.camera + competitorPrices.installCamera * quantities.camera} />
               </div>
-              <div className="border-t pt-3 mt-3">
-                {[
-                  { label: '1年総額', data: c.year1 },
-                  { label: '3年総額', data: c.year3 },
-                  { label: '5年総額', data: c.year5 },
-                ].map((item) => (
-                  <div key={item.label} className="grid grid-cols-5 gap-2 text-sm py-1">
-                    <span className="font-medium">{item.label}</span>
-                    <span className="text-right font-mono text-orange-600">{formatYen(item.data.totalCost)}</span>
-                    <span className="text-right font-mono text-blue-600">{formatYen(item.data.totalSales)}</span>
-                    <span className="text-right font-mono text-emerald-600 font-bold">{formatYen(item.data.totalProfit)}</span>
-                    <span className="text-right font-mono font-bold">{item.data.profitRatio.toFixed(1)}%</span>
-                  </div>
-                ))}
+            </div>
+
+            {/* ステンレススタンド/PoEHUB（別枠） */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-600 mb-2 border-b pb-1">ステンレススタンド/PoEHUB</h3>
+              <div className="space-y-1">
+                <CompCostRow label="ステンレススタンド/PoEHUB" price={competitorPrices.miscellaneous} qty={1} isLumpSum onChange={(v) => updateCompetitorPrice('miscellaneous', v)} />
+                <CompSubtotalRow label="ステンレススタンド/PoEHUB小計" sales={c.compMiscTotal} />
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
 
-// 顧客提示用ビュー
-const CustomerView = ({ calculations, quantities }) => {
-  const c = calculations;
-
-  const items = [
-    {
-      category: '機器費用', items: [
-        { name: '監視カメラ', price: c.hwCosts.camera.unitPrice, qty: quantities.camera },
-        { name: '海中センサ（通常）', price: c.hwCosts.sensorNormal.unitPrice, qty: quantities.sensorNormal },
-        { name: '海中センサ（高性能）', price: c.hwCosts.sensorHigh.unitPrice, qty: quantities.sensorHigh },
-        { name: 'ICT機器（PoE）', price: c.hwCosts.ictPoe.unitPrice, qty: quantities.ictPoe },
-        { name: 'ICT機器（LTE）', price: c.hwCosts.ictLte.unitPrice, qty: quantities.ictLte },
-      ]
-    },
-    {
-      category: '工事費用', items: [
-        { name: '監視カメラ設置工事', price: c.extCosts.camera.unit, qty: quantities.camera },
-        { name: 'その他ハード設定費', total: c.extCosts.other.cost },
-      ]
-    },
-  ];
-
-  return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* 期間別総額比較 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { label: '1年間', data: c.year1, bgClass: 'bg-blue-600' },
-          { label: '3年間', data: c.year3, bgClass: 'bg-emerald-600' },
-          { label: '5年間', data: c.year5, bgClass: 'bg-purple-600' },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className="bg-white rounded-xl shadow-lg border-2 overflow-hidden border-slate-200"
-          >
-            <div className={`${item.bgClass} text-white px-6 py-4 text-center`}>
-              <span className="font-bold text-lg">{item.label}総額</span>
-            </div>
-            <div className="p-6 text-center">
-              <div className="text-4xl font-black text-slate-800 font-mono">
-                {formatYen(item.data.totalSales)}
-                <span className="text-lg text-slate-500 ml-1">円</span>
-              </div>
-              <div className="mt-4 text-sm text-slate-500 space-y-1">
-                <div>初期費用: {formatYen(c.initialSales)} 円</div>
-                <div>年間運用: {formatYen(c.runningSalesYear)} 円 × {item.label.replace('年間', '')}年</div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 費用明細 */}
+      {/* 粗利サマリー（下部） */}
       <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-        <div className="bg-slate-800 text-white px-6 py-4">
-          <h2 className="font-bold text-lg">お見積り明細</h2>
+        <div className="bg-slate-600 text-white px-6 py-4">
+          <h2 className="font-bold">原価・粗利サマリー</h2>
         </div>
         <div className="p-6">
-          {/* 初期費用 */}
-          <h3 className="font-bold text-slate-700 mb-4 pb-2 border-b-2 border-slate-200">初期費用</h3>
-          {items.map((category) => (
-            <div key={category.category} className="mb-6">
-              <h4 className="text-sm font-bold text-slate-500 mb-2">{category.category}</h4>
-              <div className="space-y-2">
-                {category.items.filter(item => item.total > 0 || item.qty > 0).map((item) => (
-                  <div key={item.name} className="flex justify-between items-center py-2 border-b border-slate-100">
-                    <span className="text-slate-700">{item.name}</span>
-                    <div className="text-right">
-                      {item.total !== undefined ? (
-                        <span className="font-mono font-bold text-slate-800">{formatYen(item.total)} 円</span>
-                      ) : (
-                        <>
-                          <span className="text-slate-500 text-sm mr-4">{formatYen(item.price)} 円 × {item.qty}台</span>
-                          <span className="font-mono font-bold text-slate-800">{formatYen(item.price * item.qty)} 円</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-6 gap-2 text-xs font-bold text-slate-500">
+              <span>項目</span>
+              <span className="text-right text-blue-600">販売計</span>
+              <span className="text-right text-orange-600">原価計</span>
+              <span className="text-right text-emerald-600">粗利額</span>
+              <span className="text-right">粗利率</span>
+              <span className="text-right text-red-600">他社販売計</span>
             </div>
-          ))}
-          <div className="flex justify-between items-center py-3 bg-slate-50 px-4 rounded-lg mt-4">
-            <span className="font-bold text-slate-700">初期費用合計</span>
-            <span className="font-mono font-bold text-xl text-slate-800">{formatYen(c.initialSales)} 円</span>
-          </div>
-
-          {/* 年間運用費用 */}
-          <h3 className="font-bold text-slate-700 mb-4 pb-2 border-b-2 border-slate-200 mt-8">年間運用費用</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center py-2 border-b border-slate-100">
-              <span className="text-slate-700">監視カメラ保守</span>
-              <span className="font-mono font-bold text-slate-800">{formatYen(c.maintCosts.camera.sales)} 円/年</span>
+            <div className="grid grid-cols-6 gap-2 text-sm">
+              <span>センサ機器</span>
+              <span className="text-right font-mono text-blue-600">{formatYen(c.sensorIctTotalSales)}</span>
+              <span className="text-right font-mono text-orange-600">{formatYen(c.sensorIctTotalCost)}</span>
+              <span className="text-right font-mono text-emerald-600">{formatYen(c.sensorIctTotalSales - c.sensorIctTotalCost)}</span>
+              <span className="text-right font-mono">{c.sensorIctTotalSales > 0 ? (((c.sensorIctTotalSales - c.sensorIctTotalCost) / c.sensorIctTotalSales) * 100).toFixed(1) : 0}%</span>
+              <span className="text-right font-mono text-red-600">{c.compSensorTotal > 0 ? formatYen(c.compSensorTotal) : '-'}</span>
             </div>
-            <div className="flex justify-between items-center py-2 border-b border-slate-100">
-              <span className="text-slate-700">その他保守（センサ類・ICT機器）</span>
-              <span className="font-mono font-bold text-slate-800">{formatYen(c.maintCosts.others.sales)} 円/年</span>
+            <div className="grid grid-cols-6 gap-2 text-sm">
+              <span>アプリ年間運用</span>
+              <span className="text-right font-mono text-blue-600">{formatYen(c.runningSalesYear)}</span>
+              <span className="text-right font-mono text-orange-600">{formatYen(c.runningCostYear)}</span>
+              <span className="text-right font-mono text-emerald-600">{formatYen(c.runningProfitYear)}</span>
+              <span className="text-right font-mono">{c.runningSalesYear > 0 ? ((c.runningProfitYear / c.runningSalesYear) * 100).toFixed(1) : 0}%</span>
+              <span className="text-right font-mono text-red-600">{c.compAnnual > 0 ? formatYen(c.compAnnual) : '-'}</span>
             </div>
-            <div className="flex justify-between items-center py-2 border-b border-slate-100">
-              <span className="text-slate-700">モニタリング・通信・ストレージ</span>
-              <span className="font-mono font-bold text-slate-800">{formatYen(c.swTotalSalesYear)} 円/年</span>
+            <div className="grid grid-cols-6 gap-2 text-sm">
+              <span>ザイレム製水質センサ</span>
+              <span className="text-right font-mono text-blue-600">{formatYen(c.multiSensorTotalSales)}</span>
+              <span className="text-right font-mono text-orange-600">{formatYen(c.multiSensorTotalCost)}</span>
+              <span className="text-right font-mono text-emerald-600">{formatYen(c.multiSensorTotalSales - c.multiSensorTotalCost)}</span>
+              <span className="text-right font-mono">{c.multiSensorTotalSales > 0 ? (((c.multiSensorTotalSales - c.multiSensorTotalCost) / c.multiSensorTotalSales) * 100).toFixed(1) : 0}%</span>
+              <span className="text-right font-mono text-red-600">-</span>
             </div>
-          </div>
-          <div className="flex justify-between items-center py-3 bg-blue-50 px-4 rounded-lg mt-4">
-            <span className="font-bold text-blue-700">年間運用費用合計</span>
-            <span className="font-mono font-bold text-xl text-blue-800">{formatYen(c.runningSalesYear)} 円/年</span>
+            <div className="grid grid-cols-6 gap-2 text-sm">
+              <span>監視カメラ</span>
+              <span className="text-right font-mono text-blue-600">{formatYen(c.cameraTotalSales)}</span>
+              <span className="text-right font-mono text-orange-600">{formatYen(c.cameraTotalCost)}</span>
+              <span className="text-right font-mono text-emerald-600">{formatYen(c.cameraTotalSales - c.cameraTotalCost)}</span>
+              <span className="text-right font-mono">{c.cameraTotalSales > 0 ? (((c.cameraTotalSales - c.cameraTotalCost) / c.cameraTotalSales) * 100).toFixed(1) : 0}%</span>
+              <span className="text-right font-mono text-red-600">{c.compCameraTotal > 0 ? formatYen(c.compCameraTotal) : '-'}</span>
+            </div>
+            <div className="grid grid-cols-6 gap-2 text-sm">
+              <span>ステンレススタンド/PoEHUB</span>
+              <span className="text-right font-mono text-blue-600">{formatYen(c.miscTotalSales)}</span>
+              <span className="text-right font-mono text-orange-600">{formatYen(c.miscTotalCost)}</span>
+              <span className="text-right font-mono text-emerald-600">{formatYen(c.miscTotalSales - c.miscTotalCost)}</span>
+              <span className="text-right font-mono">{c.miscTotalSales > 0 ? (((c.miscTotalSales - c.miscTotalCost) / c.miscTotalSales) * 100).toFixed(1) : 0}%</span>
+              <span className="text-right font-mono text-red-600">{c.compMiscTotal > 0 ? formatYen(c.compMiscTotal) : '-'}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -592,20 +542,226 @@ const CustomerView = ({ calculations, quantities }) => {
   );
 };
 
-// コンポーネント
-const InputField = ({ label, value, onChange, suffix, highlight }) => (
-  <div>
-    <label className="block text-xs text-slate-500 mb-1">{label}</label>
-    <div className="flex items-center">
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full p-2 border rounded-lg text-right font-mono ${highlight ? 'border-blue-400 bg-blue-50 text-blue-700 font-bold' : 'border-slate-300'
-          }`}
-      />
-      <span className="ml-2 text-sm text-slate-500 w-8">{suffix}</span>
+// ========================================
+// 顧客提示用ビュー（印刷用・A4縦）
+// ========================================
+const CustomerView = ({ calculations, quantities, competitorPrices }) => {
+  const c = calculations;
+  const { initialItems, miscItems, annualItems } = getItemDefs(quantities, calculations);
+
+  // センサ機器のみ（監視カメラ除外）
+  const sensorIctItems = initialItems.filter(item => item.category !== '監視カメラ');
+
+  const compAnnualItems = [
+    { key: 'monitoring', label: 'モニタリング', own: c.swCosts.monitoring.salesYear, comp: competitorPrices.monitoring * 12 },
+    { key: 'lte', label: 'LTE通信料', own: c.swCosts.lte.salesYear, comp: competitorPrices.lte * quantities.sensorNormal * 12 },
+    { key: 'storage', label: 'ストレージ', own: c.swCosts.storage.salesYear, comp: competitorPrices.storage * 12 },
+  ];
+
+  // 比較用: カメラ
+  const ownCameraTotal = c.cameraTotalSales;
+  const compCameraTotal = c.compCameraTotal;
+
+  // 比較用: センサ機器（カメラ・ステンレススタンド/PoEHUB除外）
+  const ownInitialExCamera = c.sensorIctTotalSales;
+  const compInitialExCamera = c.compSensorTotal;
+
+  // 比較用: ステンレススタンド/PoEHUB
+  const ownMiscTotal = c.miscTotalSales;
+  const compMiscTotal = c.compMiscTotal;
+
+  return (
+    <div className="max-w-7xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* 左: 自社見積もり明細 */}
+        <div className="bg-white border border-slate-200 shadow-lg rounded-xl overflow-hidden">
+          <div className="bg-blue-700 text-white px-6 py-4">
+            <h2 className="font-bold text-lg text-center">自社 お見積り明細</h2>
+          </div>
+          <div className="px-6 py-5">
+
+            {/* センサ機器 */}
+            <h3 className="font-bold text-slate-700 text-sm mb-3 pb-2 border-b-2 border-slate-300">センサ機器（初期費用）</h3>
+            <table className="w-full text-sm mb-4">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
+                  <th className="text-left py-1.5 font-bold">項目</th>
+                  <th className="text-right py-1.5 font-bold w-20">単価</th>
+                  <th className="text-center py-1.5 font-bold w-10">数量</th>
+                  <th className="text-right py-1.5 font-bold w-24">金額</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sensorIctItems.filter(item => item.qty > 0).map((item) => {
+                  const total = item.isLumpSum ? item.unitPrice : item.unitPrice * item.qty;
+                  return (
+                    <tr key={item.key} className="border-b border-slate-100">
+                      <td className="py-1.5 text-slate-700 pl-2">{item.label}</td>
+                      <td className="py-1.5 text-right font-mono text-slate-600">{formatYen(item.unitPrice)}</td>
+                      <td className="py-1.5 text-center text-slate-500">{item.isLumpSum ? '一式' : item.qty}</td>
+                      <td className="py-1.5 text-right font-mono font-bold text-slate-800">{formatYen(total)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 bg-slate-50">
+                  <td colSpan={3} className="py-2 font-bold text-slate-700">センサ機器合計</td>
+                  <td className="py-2 text-right font-mono font-black text-slate-800">{formatYen(ownInitialExCamera)} 円</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            {/* 年間運用費用 */}
+            <h3 className="font-bold text-slate-700 text-sm mb-3 pb-2 border-b-2 border-slate-300">年間運用費用（水質モニタリングアプリケーション）</h3>
+            <table className="w-full text-sm mb-4">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
+                  <th className="text-left py-1.5 font-bold">項目</th>
+                  <th className="text-right py-1.5 font-bold w-24">年額</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compAnnualItems.map((item) => (
+                  <tr key={item.key} className="border-b border-slate-100">
+                    <td className="py-1.5 text-slate-700 pl-2">{item.label}</td>
+                    <td className="py-1.5 text-right font-mono font-bold text-slate-800">{formatYen(item.own)} 円</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 bg-blue-50">
+                  <td className="py-2 font-bold text-blue-700">年間運用合計</td>
+                  <td className="py-2 text-right font-mono font-black text-blue-800">{formatYen(c.runningSalesYear)} 円/年</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            {/* 自社サマリー */}
+            <div className="border-2 border-blue-200 rounded-lg overflow-hidden mt-4">
+              <div className="bg-blue-700 text-white px-4 py-2">
+                <h3 className="font-bold text-center text-sm">自社費用サマリー</h3>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-200">
+                  <span className="font-bold text-slate-700 text-sm">センサ機器</span>
+                  <span className="font-mono text-lg font-black text-blue-800">{formatYen(ownInitialExCamera)}<span className="text-xs text-slate-500 ml-0.5">円</span></span>
+                </div>
+                <div className="flex justify-between items-center py-1.5">
+                  <span className="font-bold text-slate-700 text-sm">年間運用</span>
+                  <span className="font-mono text-lg font-black text-blue-800">{formatYen(c.runningSalesYear)}<span className="text-xs text-slate-500 ml-0.5">円/年</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 右: 他社比較費用 */}
+        <div className="bg-white border border-slate-200 shadow-lg rounded-xl overflow-hidden">
+          <div className="bg-red-700 text-white px-6 py-4">
+            <h2 className="font-bold text-lg text-center">他社 費用比較</h2>
+          </div>
+          <div className="px-6 py-5">
+
+            {/* センサ機器 */}
+            <h3 className="font-bold text-slate-700 text-sm mb-3 pb-2 border-b-2 border-slate-300">センサ機器（初期費用）</h3>
+            <table className="w-full text-sm mb-4">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
+                  <th className="text-left py-1.5 font-bold">項目</th>
+                  <th className="text-center py-1.5 font-bold w-10">数量</th>
+                  <th className="text-right py-1.5 font-bold w-24">金額</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quantities.sensorNormal > 0 && (
+                  <tr className="border-b border-slate-100">
+                    <td className="py-1.5 text-slate-700 pl-2">水温センサー</td>
+                    <td className="py-1.5 text-center text-slate-500">{quantities.sensorNormal}</td>
+                    <td className="py-1.5 text-right font-mono font-bold text-slate-800">{competitorPrices.sensorNormal * quantities.sensorNormal > 0 ? formatYen(competitorPrices.sensorNormal * quantities.sensorNormal) : '-'}</td>
+                  </tr>
+                )}
+                {quantities.wireless > 0 && (
+                  <tr className="border-b border-slate-100">
+                    <td className="py-1.5 text-slate-700 pl-2">無線オプション</td>
+                    <td className="py-1.5 text-center text-slate-500">{quantities.wireless}</td>
+                    <td className="py-1.5 text-right font-mono font-bold text-slate-800">{competitorPrices.wireless * quantities.wireless > 0 ? formatYen(competitorPrices.wireless * quantities.wireless) : '-'}</td>
+                  </tr>
+                )}
+                {quantities.sensorNormal > 0 && (
+                  <tr className="border-b border-slate-100">
+                    <td className="py-1.5 text-slate-700 pl-2">ハード設定費</td>
+                    <td className="py-1.5 text-center text-slate-500">{quantities.sensorNormal}</td>
+                    <td className="py-1.5 text-right font-mono font-bold text-slate-800">{competitorPrices.installOther * quantities.sensorNormal > 0 ? formatYen(competitorPrices.installOther * quantities.sensorNormal) : '-'}</td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 bg-slate-50">
+                  <td colSpan={2} className="py-2 font-bold text-slate-700">センサ機器合計</td>
+                  <td className="py-2 text-right font-mono font-black text-slate-800">{compInitialExCamera > 0 ? formatYen(compInitialExCamera) + ' 円' : '-'}</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            {/* 年間運用費用 */}
+            <h3 className="font-bold text-slate-700 text-sm mb-3 pb-2 border-b-2 border-slate-300">年間運用費用（水質モニタリングアプリケーション）</h3>
+            <table className="w-full text-sm mb-4">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
+                  <th className="text-left py-1.5 font-bold">項目</th>
+                  <th className="text-right py-1.5 font-bold w-24">年額</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compAnnualItems.map((item) => (
+                  <tr key={item.key} className="border-b border-slate-100">
+                    <td className="py-1.5 text-slate-700 pl-2">{item.label}</td>
+                    <td className="py-1.5 text-right font-mono font-bold text-slate-800">{item.comp > 0 ? formatYen(item.comp) + ' 円' : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 bg-red-50">
+                  <td className="py-2 font-bold text-red-700">年間運用合計</td>
+                  <td className="py-2 text-right font-mono font-black text-red-800">{c.compAnnual > 0 ? formatYen(c.compAnnual) + ' 円/年' : '-'}</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            {/* 他社サマリー */}
+            <div className="border-2 border-red-200 rounded-lg overflow-hidden mt-4">
+              <div className="bg-red-700 text-white px-4 py-2">
+                <h3 className="font-bold text-center text-sm">他社費用サマリー</h3>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-200">
+                  <span className="font-bold text-slate-700 text-sm">センサ機器</span>
+                  <span className="font-mono text-lg font-black text-red-800">{compInitialExCamera > 0 ? formatYen(compInitialExCamera) : '-'}<span className="text-xs text-slate-500 ml-0.5">{compInitialExCamera > 0 ? '円' : ''}</span></span>
+                </div>
+                <div className="flex justify-between items-center py-1.5">
+                  <span className="font-bold text-slate-700 text-sm">年間運用</span>
+                  <span className="font-mono text-lg font-black text-red-800">{c.compAnnual > 0 ? formatYen(c.compAnnual) : '-'}<span className="text-xs text-slate-500 ml-0.5">{c.compAnnual > 0 ? '円/年' : ''}</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
+  );
+};
+
+// ========================================
+// 共通コンポーネント
+// ========================================
+const InputField = ({ label, value, onChange, suffix }) => (
+  <div className="flex items-center gap-1">
+    <label className="text-xs text-slate-500 whitespace-nowrap">{label}</label>
+    <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-14 px-1.5 py-0.5 border rounded text-right font-mono text-xs border-slate-300" />
+    <span className="text-xs text-slate-400">{suffix}</span>
   </div>
 );
 
@@ -613,49 +769,51 @@ const CostRow = ({ label, cost, price, qty, onCostChange, onPriceChange }) => (
   <div className="grid grid-cols-12 gap-2 items-center text-sm">
     <span className="col-span-2 text-slate-600">{label}</span>
     <div className="col-span-2">
-      <input
-        type="text"
-        value={formatYen(cost)}
-        onChange={(e) => onCostChange(e.target.value)}
-        className="w-full p-1.5 border border-slate-300 rounded text-right font-mono text-sm bg-orange-50"
-      />
+      <input type="text" value={formatYen(price)} onChange={(e) => onPriceChange(e.target.value)} className="w-full p-1.5 border border-slate-300 rounded text-right font-mono text-sm bg-blue-50" />
     </div>
     <div className="col-span-2">
-      <input
-        type="text"
-        value={formatYen(price)}
-        onChange={(e) => onPriceChange(e.target.value)}
-        className="w-full p-1.5 border border-slate-300 rounded text-right font-mono text-sm bg-blue-50"
-      />
+      <input type="text" value={formatYen(cost)} onChange={(e) => onCostChange(e.target.value)} className="w-full p-1.5 border border-slate-300 rounded text-right font-mono text-sm bg-orange-50" />
     </div>
     <span className="col-span-1 text-slate-400 text-xs text-center">×{qty}</span>
-    <span className="col-span-2 text-right font-mono text-slate-600">{formatYen(cost * qty)}</span>
     <span className="col-span-3 text-right font-mono text-blue-600 font-medium">{formatYen(price * qty)}</span>
+    <span className="col-span-2 text-right font-mono text-slate-600">{formatYen(cost * qty)}</span>
   </div>
 );
 
-const ExternalCostRow = ({ label, cost, qty, onChange, isLumpSum }) => (
-  <div className="grid grid-cols-12 gap-2 items-center text-sm">
-    <span className="col-span-4 text-slate-600">{label}</span>
-    <div className="col-span-3">
+const CompCostRow = ({ label, price, qty, isLumpSum, onChange }) => (
+  <div className="flex items-center justify-between gap-2 text-sm py-0.5">
+    <span className="text-slate-600 text-xs whitespace-nowrap">{label}</span>
+    <div className="flex items-center gap-1">
+      <input type="text" value={formatYen(price)} onChange={(e) => onChange(e.target.value)} className="w-24 p-1 border border-slate-300 rounded text-right font-mono text-xs bg-red-50" />
+      <span className="text-slate-400 text-xs w-6 text-center">{isLumpSum ? '式' : `×${qty}`}</span>
+      <span className="font-mono text-red-600 font-medium text-xs w-20 text-right">{formatYen(isLumpSum ? price : price * qty)}</span>
+    </div>
+  </div>
+);
+
+const CompSubtotalRow = ({ label, sales }) => (
+  <div className="flex justify-between items-center pt-1.5 border-t border-slate-200 mt-1.5">
+    <span className="font-medium text-slate-700 text-xs">{label}</span>
+    <span className="font-mono text-red-600 font-bold text-sm">{formatYen(sales)} 円</span>
+  </div>
+);
+
+const CompetitorRow = ({ label, value, qty, isLumpSum, onChange, suffix }) => (
+  <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+    <span className="text-sm text-slate-600">{label}</span>
+    <div className="flex items-center gap-2">
+      {!isLumpSum && qty > 1 && <span className="text-slate-400 text-xs">×{qty}</span>}
       <input
         type="text"
-        value={formatYen(cost)}
+        value={formatYen(value)}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full p-1.5 border border-slate-300 rounded text-right font-mono text-sm"
+        className="w-28 p-1.5 border border-slate-300 rounded text-right font-mono text-sm bg-red-50"
       />
+      {suffix && <span className="text-xs text-slate-400">{suffix}</span>}
+      {!isLumpSum && qty > 1 && !suffix && (
+        <span className="font-mono text-sm text-slate-500 w-20 text-right">{formatYen(value * qty)}</span>
+      )}
     </div>
-    {isLumpSum ? (
-      <>
-        <span className="col-span-1 text-slate-400 text-xs text-center">一式</span>
-        <span className="col-span-4 text-right font-mono text-slate-700">{formatYen(cost)} 円</span>
-      </>
-    ) : (
-      <>
-        <span className="col-span-1 text-slate-400 text-xs text-center">×{qty}</span>
-        <span className="col-span-4 text-right font-mono text-slate-700">{formatYen(cost * qty)} 円</span>
-      </>
-    )}
   </div>
 );
 
@@ -663,8 +821,8 @@ const SubtotalRow = ({ label, cost, sales }) => (
   <div className="flex justify-between items-center pt-2 border-t border-slate-200 mt-2">
     <span className="font-medium text-slate-700">{label}</span>
     <div className="flex gap-4">
-      <span className="font-mono text-slate-500">原価: {formatYen(cost)}</span>
       <span className="font-mono text-blue-600 font-bold">販売: {formatYen(sales)} 円</span>
+      <span className="font-mono text-slate-500">原価: {formatYen(cost)}</span>
     </div>
   </div>
 );

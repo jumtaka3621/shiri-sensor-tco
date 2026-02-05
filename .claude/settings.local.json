@@ -13,7 +13,20 @@
       "Bash(gh api:*)",
       "Bash(gh repo edit:*)",
       "Bash(gh run:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx vite build)",
+      "Bash(npx vite --host)",
+      "Bash(npx vite)",
+      "Bash(docker-compose up:*)",
+      "Bash(dir:*)",
+      "Bash(node -e:*)",
+      "Bash(curl:*)",
+      "Bash(powershell.exe -Command \"Remove-Item -LiteralPath ''\\\\\\\\?\\\\C:\\\\dev\\\\claude-project\\\\shiri_sensor_tco\\\\nul'' -Force\")",
+      "Bash(python -c \"import os; os.remove\\(r''\\\\\\\\?\\\\C:\\\\dev\\\\claude-project\\\\shiri_sensor_tco\\\\nul''\\)\")",
+      "Bash(python:*)"
     ]
   }
 }

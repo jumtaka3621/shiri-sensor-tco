@@ -4,7 +4,12 @@
 
 /* 印刷用スタイル */
 @media print {
-  body {
+  @page {
+    size: A3 landscape;
+    margin: 10mm;
+  }
+
+  html, body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -14,20 +19,75 @@
     display: none !important;
   }
 
-  /* 入力欄を非表示にして値だけ表示 */
-  input {
-    border: none !important;
-    background: transparent !important;
+  /* 背景のグラデーションを除去、余白なし */
+  .min-h-screen {
+    min-height: auto !important;
+    background: white !important;
+    padding: 0 !important;
+  }
+
+  /* 印刷時にshadow除去 */
+  .shadow-lg, .shadow-xl {
+    box-shadow: none !important;
+  }
+
+  /* 印刷時にrounded除去 */
+  .rounded-xl, .rounded-2xl, .rounded-lg {
+    border-radius: 0 !important;
   }
 
   /* 背景色を印刷 */
   .bg-slate-900,
+  .bg-blue-700,
+  .bg-red-700,
+  .bg-slate-800,
+  .bg-slate-600,
   .bg-blue-600,
   .bg-emerald-600,
-  .bg-purple-600,
-  .bg-slate-600,
-  .bg-slate-50 {
+  .bg-slate-50,
+  .bg-blue-50,
+  .bg-red-50 {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  /* ページ区切り制御 */
+  .print-page-break {
+    page-break-before: always;
+  }
+
+  .print-avoid-break {
+    page-break-inside: avoid;
+  }
+
+  /* 印刷時にヘッダーを小さく */
+  .print-header-compact .text-2xl {
+    font-size: 1rem !important;
+  }
+  .print-header-compact .p-6 {
+    padding: 0.5rem 1rem !important;
+  }
+
+  /* 印刷時にmax-width制限を解除して全幅に */
+  .max-w-3xl,
+  .max-w-7xl {
+    max-width: 100% !important;
+  }
+
+  /* 2カラムレイアウトを印刷時も維持 */
+  .lg\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .lg\:grid-cols-12 {
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  }
+
+  .lg\:col-span-7 {
+    grid-column: span 7 / span 7 !important;
+  }
+
+  .lg\:col-span-5 {
+    grid-column: span 5 / span 5 !important;
   }
 }
